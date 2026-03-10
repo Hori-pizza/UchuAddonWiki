@@ -1,5 +1,6 @@
 {
     "id": "timer",
+    "icon": "Timer",
     "english_name": "Timer",
     "name": "タイマー",
     "team": "モディファイア",

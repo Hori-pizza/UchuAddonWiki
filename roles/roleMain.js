@@ -30,61 +30,40 @@ const FROM_SOURCES = [
     { code: 'TOU', name: 'Town Of Us' }
 ];
 
-// 陣営アイコンのフォールバック候補（実ファイル名の揺れ対応）
-const TEAM_ICON_CANDIDATES = {
-    'クルーメイト': ['Crewmate'],
-    'インポスター': ['Impostor', 'Impsoter'],
-    'ニュートラル': ['Neutral'],
-    'モディファイア': ['Modifier', 'Modifiers'],
-    'ゴースト': ['Ghost'],
-    'パーク': ['Perk', 'Modifiers', 'Neutral']
-};
-
-// id/english_name と実ファイル名の差分吸収（大文字小文字以外の揺れも補正）
-const ROLE_ICON_ALIASES = {
-    decorator: ['Decolate'],
-    loversbreaker: ['LoversBeraker'],
-    shaman: ['Sherman'],
-    summoner: ['Summoer'],
-    supervisor: ['Visor'],
-    visormodifier: ['Visor'],
-    tunamodi: ['Tuna'],
-    proxy: ['Proxy&Monitor'],
-    monitor: ['Proxy&Monitor'],
-    nicehawk: ['Hawk'],
-    evilhawk: ['Hawk'],
-    niceobserver: ['Observer'],
-    evilobserver: ['Observer'],
-    nicedecorator: ['Decolate'],
-    evildecorator: ['Decolate'],
-    chickenmodifier: ['Chicken']
+// 陣営フォールバックアイコン（役職にiconが未設定の場合）
+const TEAM_FALLBACK_ICON = {
+    'クルーメイト': 'Crewmate',
+    'インポスター': 'Impsoter',
+    'ニュートラル': 'Neutral',
+    'モディファイア': 'Modifiers',
+    'ゴースト': 'Ghost',
+    'パーク': 'Neutral'
 };
 
 // アイコンの色を変換（赤→役職カラー、青→白）
 function recolorIcon(imagePath, roleColor, callback) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    
+
     img.onload = function() {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = img.width;
         canvas.height = img.height;
-        
+
         ctx.drawImage(img, 0, 0);
-        
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        
+
         // RGB値を取得（"72, 187, 120" → [72, 187, 120]）
         const targetRGB = roleColor ? roleColor.split(',').map(n => parseInt(n.trim())) : [102, 126, 234];
-        
+
         for (let i = 0; i < data.length; i += 4) {
             const r = data[i];
             const g = data[i + 1];
             const b = data[i + 2];
-            const a = data[i + 3];
-            
+
             // 赤色の検出（赤が強く、緑青が弱い）
             if (r > 150 && g < 100 && b < 100) {
                 // 赤→役職カラーに変換
@@ -100,141 +79,33 @@ function recolorIcon(imagePath, roleColor, callback) {
                 data[i + 2] = 255;
             }
         }
-        
+
         ctx.putImageData(imageData, 0, 0);
         callback(canvas.toDataURL());
     };
-    
+
     img.onerror = function() {
         callback(null);
     };
-    
+
     img.src = imagePath;
 }
 
-function normalizeIconKey(value) {
-    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
-function toPascalCase(value) {
-    const normalized = String(value || '')
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .replace(/[^A-Za-z0-9]+/g, ' ')
-        .trim();
-
-    if (!normalized) return '';
-
-    return normalized
-        .split(/\s+/)
-        .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
-        .join('');
-}
-
-function buildRoleIconNameCandidates(role) {
-    const candidateSet = new Set();
-    const push = value => {
-        if (value && String(value).trim()) {
-            candidateSet.add(String(value).trim());
-        }
-    };
-
-    const addVariants = raw => {
-        if (!raw) return;
-        const text = String(raw).trim();
-        const key = normalizeIconKey(text);
-        if (!key) return;
-
-        // ID一致（大小文字無視）で解決するため、ID由来の候補を生成
-        push(text);
-        push(text.replace(/\s+/g, ''));
-        push(text.toLowerCase());
-        if (text.length <= 4) {
-            push(text.toUpperCase());
-        }
-        push(toPascalCase(text));
-
-        if (/^nice\s+/i.test(text)) {
-            push(text.replace(/^nice\s+/i, ''));
-        }
-        if (/^evil\s+/i.test(text)) {
-            push(text.replace(/^evil\s+/i, ''));
-        }
-
-        const aliases = ROLE_ICON_ALIASES[key] || [];
-        aliases.forEach(push);
-    };
-
-    addVariants(role.id);
-
-    return Array.from(candidateSet);
-}
-
-function buildRoleIconPaths(role) {
-    const names = [
-        ...buildRoleIconNameCandidates(role),
-        ...(TEAM_ICON_CANDIDATES[role.team] || [])
-    ];
-
-    const unique = new Set();
-    const paths = [];
-
-    names.forEach(name => {
-        const key = normalizeIconKey(name);
-        if (!key || unique.has(key)) return;
-        unique.add(key);
-        paths.push(`../resource/roleicon/${name}.png`);
-    });
-
-    return paths;
-}
-
-const roleIconPathExistsCache = new Map();
-
-function checkRoleIconPathExists(path) {
-    if (roleIconPathExistsCache.has(path)) {
-        return Promise.resolve(roleIconPathExistsCache.get(path));
-    }
-
-    return fetch(path, { method: 'HEAD' })
-        .then(response => response.ok)
-        .catch(() => false)
-        .then(exists => {
-            roleIconPathExistsCache.set(path, exists);
-            return exists;
-        });
-}
-
-function tryRecolorIconPaths(paths, roleColor, onResolved, index = 0) {
-    if (index >= paths.length) {
-        onResolved(null);
-        return;
-    }
-
-    const path = paths[index];
-    checkRoleIconPathExists(path).then(exists => {
-        if (!exists) {
-            tryRecolorIconPaths(paths, roleColor, onResolved, index + 1);
-            return;
-        }
-
-        recolorIcon(path, roleColor, dataUrl => {
-            if (dataUrl) {
-                onResolved(dataUrl);
-                return;
-            }
-            tryRecolorIconPaths(paths, roleColor, onResolved, index + 1);
-        });
-    });
+// JSONのiconフィールドからアイコンパスを取得
+function getRoleIconPath(role) {
+    const iconName = role.icon || TEAM_FALLBACK_ICON[role.team];
+    if (!iconName) return null;
+    return `../resource/roleicon/${iconName}.png`;
 }
 
 function applyRoleIcon(iconElement, role) {
     if (!iconElement) return;
-    const iconPaths = buildRoleIconPaths(role);
-    if (iconPaths.length === 0) return;
+    const iconPath = getRoleIconPath(role);
+    if (!iconPath) return;
 
-    tryRecolorIconPaths(iconPaths, role.color, resolved => {
-        if (!resolved) return;
-        iconElement.src = resolved;
+    recolorIcon(iconPath, role.color, dataUrl => {
+        if (!dataUrl) return;
+        iconElement.src = dataUrl;
         iconElement.style.display = 'block';
     });
 }
@@ -524,7 +395,7 @@ function renderRoles() {
     
     container.innerHTML = cardsHTML;
     
-    // アイコンを色変換して表示（idベース・大文字小文字無視）
+    // アイコンを色変換して表示
     filteredRoles.forEach((role, index) => {
         const cardId = `role-card-${index}`;
         const iconElement = document.getElementById(`${cardId}-icon`);
@@ -678,7 +549,7 @@ function showRoleDetails(role) {
         </div>
     `;
 
-    // アイコンを色変換して表示（idベース・大文字小文字無視）
+    // アイコンを色変換して表示
     const detailIconElement = document.getElementById('detail-icon');
     applyRoleIcon(detailIconElement, role);
 

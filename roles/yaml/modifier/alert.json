@@ -1,5 +1,6 @@
 {
     "id": "alert",
+    "icon": "Alert",
     "english_name": "Alert",
     "name": "アラート",
     "team": "モディファイア",
