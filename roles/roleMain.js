@@ -144,8 +144,13 @@ function buildRoleIconNameCandidates(role) {
         const key = normalizeIconKey(text);
         if (!key) return;
 
+        // ID一致（大小文字無視）で解決するため、ID由来の候補を生成
         push(text);
         push(text.replace(/\s+/g, ''));
+        push(text.toLowerCase());
+        if (text.length <= 4) {
+            push(text.toUpperCase());
+        }
         push(toPascalCase(text));
 
         if (/^nice\s+/i.test(text)) {
@@ -160,7 +165,6 @@ function buildRoleIconNameCandidates(role) {
     };
 
     addVariants(role.id);
-    addVariants(role.english_name);
 
     return Array.from(candidateSet);
 }
@@ -184,18 +188,42 @@ function buildRoleIconPaths(role) {
     return paths;
 }
 
+const roleIconPathExistsCache = new Map();
+
+function checkRoleIconPathExists(path) {
+    if (roleIconPathExistsCache.has(path)) {
+        return Promise.resolve(roleIconPathExistsCache.get(path));
+    }
+
+    return fetch(path, { method: 'HEAD' })
+        .then(response => response.ok)
+        .catch(() => false)
+        .then(exists => {
+            roleIconPathExistsCache.set(path, exists);
+            return exists;
+        });
+}
+
 function tryRecolorIconPaths(paths, roleColor, onResolved, index = 0) {
     if (index >= paths.length) {
         onResolved(null);
         return;
     }
 
-    recolorIcon(paths[index], roleColor, dataUrl => {
-        if (dataUrl) {
-            onResolved(dataUrl);
+    const path = paths[index];
+    checkRoleIconPathExists(path).then(exists => {
+        if (!exists) {
+            tryRecolorIconPaths(paths, roleColor, onResolved, index + 1);
             return;
         }
-        tryRecolorIconPaths(paths, roleColor, onResolved, index + 1);
+
+        recolorIcon(path, roleColor, dataUrl => {
+            if (dataUrl) {
+                onResolved(dataUrl);
+                return;
+            }
+            tryRecolorIconPaths(paths, roleColor, onResolved, index + 1);
+        });
     });
 }
 
